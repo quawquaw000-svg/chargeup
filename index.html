@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8f2">
+  <meta name="description" content="Reserve a phone charger for your school lessons. One cable, one franc per lesson.">
+  <title>ChargeUp — Borrow a charger</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; font-family: "DM Sans", sans-serif; background: #f7f8f2; color: #17241e; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    button, input, select { font: inherit; }
+    .display-font { font-family: "Manrope", sans-serif; }
+    .grain { background-image: radial-gradient(#dce5d8 .65px, transparent .65px); background-size: 15px 15px; }
+    .focus-ring:focus-visible { outline: 3px solid #a3e635; outline-offset: 3px; }
+    dialog::backdrop { background: rgb(15 23 19 / 55%); backdrop-filter: blur(3px); }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="min-h-screen">
+    <header class="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
+      <a href="#" class="focus-ring flex items-center gap-2.5 rounded-xl" aria-label="ChargeUp home">
+        <span class="grid h-10 w-10 place-items-center rounded-2xl bg-lime-300 text-xl text-emerald-950" aria-hidden="true">ϟ</span>
+        <span class="display-font text-xl font-extrabold tracking-tight">charge<span class="text-emerald-700">up</span></span>
+      </a>
+      <nav class="flex items-center gap-2 sm:gap-5" aria-label="Main navigation">
+        <a href="#availability" class="focus-ring hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:text-emerald-800 sm:inline">Availability</a>
+        <a href="#how-it-works" class="focus-ring hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:text-emerald-800 sm:inline">How it works</a>
+        <button id="adminOpen" type="button" class="focus-ring rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:text-emerald-800">Admin login</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="mx-auto grid max-w-7xl gap-10 px-5 pb-12 pt-5 sm:px-8 md:grid-cols-[1.05fr_.95fr] md:items-center md:pb-20 md:pt-12">
+        <div>
+          <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white px-3.5 py-2 text-xs font-bold uppercase tracking-[.13em] text-emerald-800 shadow-sm">
+            <span class="h-2 w-2 rounded-full bg-lime-500"></span>Your school-day power-up
+          </div>
+          <h1 class="display-font max-w-2xl text-5xl font-extrabold leading-[1.04] tracking-[-.055em] text-slate-900 sm:text-6xl lg:text-7xl">Running low?<br><span class="text-emerald-700">We’ve got a cable.</span></h1>
+          <p class="mt-6 max-w-lg text-lg leading-8 text-slate-600">Borrow a charger for your lessons from Vincent and Max. Simple, affordable, and ready when you need it.</p>
+          <div class="mt-8 flex flex-wrap items-center gap-3">
+            <a href="#booking" class="focus-ring inline-flex items-center gap-2 rounded-full bg-emerald-800 px-6 py-3.5 font-bold text-white shadow-lg shadow-emerald-900/15 transition hover:-translate-y-0.5 hover:bg-emerald-900">Book a cable <span aria-hidden="true">→</span></a>
+            <span class="text-sm font-semibold text-slate-500">Just <strong class="text-slate-800">CHF 1</strong> per lesson</span>
+          </div>
+          <div class="mt-9 flex items-center gap-3 text-sm text-slate-600">
+            <div class="flex -space-x-2" aria-hidden="true">
+              <span class="grid h-9 w-9 place-items-center rounded-full border-2 border-[#f7f8f2] bg-orange-200 font-bold text-orange-900">V</span>
+              <span class="grid h-9 w-9 place-items-center rounded-full border-2 border-[#f7f8f2] bg-sky-200 font-bold text-sky-900">M</span>
+            </div>
+            <span>Run by <strong class="text-slate-800">Vincent &amp; Max</strong></span><span class="text-slate-300">·</span><span>4 cables available</span>
+          </div>
+        </div>
+        <div class="relative mx-auto w-full max-w-lg">
+          <div class="absolute -right-4 -top-5 h-28 w-28 rounded-full bg-lime-200/80 blur-2xl"></div>
+          <div class="grain relative overflow-hidden rounded-[2rem] border border-white bg-[#eaf0e5] p-5 shadow-[0_24px_70px_-32px_rgba(27,65,41,.35)] sm:p-8">
+            <div class="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-[#d5e8cc]"></div>
+            <div class="relative rounded-[1.5rem] bg-white p-5 shadow-xl shadow-emerald-950/10 sm:p-7">
+              <div class="flex items-start justify-between">
+                <div><p class="text-xs font-bold uppercase tracking-[.15em] text-emerald-700">Small cable, big save</p><h2 class="display-font mt-2 text-2xl font-extrabold tracking-tight">Stay charged.</h2></div>
+                <span class="grid h-12 w-12 place-items-center rounded-2xl bg-lime-100 text-2xl" aria-hidden="true">🔋</span>
+              </div>
+              <div class="my-7 flex items-center justify-center">
+                <div class="relative grid h-44 w-44 place-items-center rounded-full border-[14px] border-emerald-50 bg-[#f7fbf4]">
+                  <div class="absolute inset-0 rotate-[-35deg] rounded-full border-[14px] border-transparent border-r-lime-400 border-t-lime-400"></div>
+                  <div class="text-center"><span class="display-font block text-4xl font-extrabold tracking-tight text-emerald-800">100%</span><span class="mt-1 block text-xs font-bold uppercase tracking-widest text-slate-400">lesson ready</span></div>
+                </div>
+              </div>
+              <div class="flex items-center justify-between rounded-2xl bg-[#f7f8f2] px-4 py-3.5"><span class="text-sm font-semibold text-slate-600">Your phone, saved</span><span class="rounded-full bg-lime-100 px-3 py-1 text-sm font-extrabold text-emerald-900">CHF 1 / lesson</span></div>
+            </div>
+            <div class="relative mt-4 flex items-center justify-center gap-2 text-xs font-semibold text-emerald-950/70"><span class="grid h-6 w-6 place-items-center rounded-lg bg-white/80" aria-hidden="true">↗</span>Book it. Pick it up. Plug in.</div>
+          </div>
+          <div class="absolute -left-5 top-1/2 hidden -translate-y-1/2 rounded-2xl border border-white bg-white px-4 py-3 shadow-lg sm:block"><p class="text-xs font-semibold text-slate-500">No online payment</p><p class="mt-0.5 text-sm font-extrabold text-emerald-800">Cash at pickup 💵</p></div>
+        </div>
+      </section>
+
+      <section id="availability" class="scroll-mt-6 border-y border-emerald-950/5 bg-white/70 py-16 sm:py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+            <div><p class="text-xs font-extrabold uppercase tracking-[.16em] text-emerald-700">Live availability</p><h2 class="display-font mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Pick your lessons.</h2><p class="mt-2 text-slate-500">Availability updates automatically as cables are booked.</p></div>
+            <label class="block text-sm font-bold text-slate-700">Booking date<input id="bookingDate" type="date" class="focus-ring mt-1.5 block rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 font-semibold text-slate-700 shadow-sm"></label>
+          </div>
+          <div id="connectionStatus" role="status" class="mt-6 flex items-center gap-2 text-xs font-semibold text-slate-500"><span class="h-2 w-2 rounded-full bg-amber-400"></span>Connecting…</div>
+          <div id="timetable" class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-9" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:px-8 md:grid-cols-[.8fr_1.2fr] md:gap-16 md:py-24">
+        <div id="how-it-works" class="scroll-mt-8">
+          <p class="text-xs font-extrabold uppercase tracking-[.16em] text-emerald-700">Easy as 1, 2, 3</p><h2 class="display-font mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">More battery.<br>Less hassle.</h2>
+          <p class="mt-4 leading-7 text-slate-600">Choose your lesson times and we’ll save a cable for you. Each lesson is 45 minutes.</p>
+          <div class="mt-7 space-y-4">
+            <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">1</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Reserve online</strong> — pick a date and your start and end lesson.</p></div>
+            <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">2</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Find Vincent or Max</strong> to pick up your cable.</p></div>
+            <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">3</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Pay cash at pickup</strong> — CHF 1 for each lesson, no online payment.</p></div>
+          </div>
+        </div>
+        <div id="booking" class="scroll-mt-8 rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-[0_20px_65px_-42px_rgba(15,55,33,.35)] sm:p-8">
+          <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-extrabold uppercase tracking-[.16em] text-emerald-700">Make it yours</p><h2 class="display-font mt-1 text-2xl font-extrabold tracking-tight">Book a charger</h2></div><span class="rounded-full bg-lime-100 px-3 py-1.5 text-xs font-extrabold text-emerald-900">CHF 1 / lesson</span></div>
+          <form id="bookingForm" class="mt-6 space-y-4">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm font-bold text-slate-700">Student name<input id="studentName" name="studentName" type="text" maxlength="60" autocomplete="name" required placeholder="e.g. Alex Meier" class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 font-medium outline-none placeholder:text-slate-400 focus:border-emerald-600"></label>
+              <label class="block text-sm font-bold text-slate-700">Class<input id="studentClass" name="studentClass" type="text" maxlength="24" required placeholder="e.g. 2B" class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 font-medium outline-none placeholder:text-slate-400 focus:border-emerald-600"></label>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm font-bold text-slate-700">Start lesson<select id="startLesson" name="startLesson" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"></select></label>
+              <label class="block text-sm font-bold text-slate-700">End lesson<select id="endLesson" name="endLesson" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"></select></label>
+            </div>
+            <div class="flex items-center justify-between rounded-2xl bg-[#f6f8f3] px-4 py-3.5"><div><p class="text-sm font-bold text-slate-700">Total to pay at pickup</p><p id="lessonCount" class="mt-0.5 text-xs text-slate-500">Choose your lessons</p></div><p id="totalPrice" class="display-font text-2xl font-extrabold text-emerald-800">CHF 0</p></div>
+            <button id="submitBooking" type="submit" class="focus-ring w-full rounded-full bg-emerald-800 px-5 py-3.5 font-extrabold text-white shadow-md shadow-emerald-950/10 transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">Reserve my cable</button>
+            <p class="text-center text-xs leading-5 text-slate-500">Cash payment on pickup only. CHF 1 per lesson, paid directly to Vincent or Max.</p>
+          </form>
+          <div id="bookingMessage" class="mt-4 hidden rounded-xl px-4 py-3 text-sm font-semibold" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+    <footer class="border-t border-slate-200/70 bg-white/60"><div class="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-7 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"><p>Made for school days by <strong class="text-slate-700">Vincent &amp; Max</strong></p><p>One cable at a time. ⚡</p></div></footer>
+  </div>
+
+  <dialog id="adminDialog" class="w-[min(94vw,42rem)] rounded-[1.5rem] border-0 p-0 shadow-2xl">
+    <div class="p-5 sm:p-7">
+      <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-extrabold uppercase tracking-[.16em] text-emerald-700">Vincent &amp; Max</p><h2 class="display-font mt-1 text-2xl font-extrabold tracking-tight">Admin dashboard</h2></div><button id="adminClose" type="button" class="focus-ring grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-lg text-slate-600 hover:bg-slate-200" aria-label="Close admin dashboard">×</button></div>
+      <form id="adminLoginForm" class="mt-6">
+        <p class="text-sm leading-6 text-slate-600">Sign in with the Firebase admin account set up for this app.</p>
+        <label class="mt-4 block text-sm font-bold text-slate-700">Admin email<input id="adminEmail" type="email" autocomplete="username" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 outline-none focus:border-emerald-600"></label>
+        <label class="mt-3 block text-sm font-bold text-slate-700">Password<input id="adminPassword" type="password" autocomplete="current-password" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 outline-none focus:border-emerald-600"></label>
+        <button type="submit" class="focus-ring mt-4 w-full rounded-xl bg-emerald-800 px-5 py-3 font-bold text-white hover:bg-emerald-900">Log in</button>
+        <p id="adminLoginError" class="mt-2 hidden text-sm font-semibold text-rose-700" role="alert"></p>
+      </form>
+      <div id="adminPanel" class="mt-6 hidden">
+        <div class="flex items-center justify-between gap-4"><div><h3 class="font-extrabold text-slate-900">Bookings for <span id="adminDateLabel"></span></h3><p class="mt-1 text-xs text-slate-500">Choose a date in the timetable to manage another day.</p></div><button id="adminLogout" type="button" class="focus-ring rounded-full border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Log out</button></div>
+        <h4 class="mt-6 text-sm font-extrabold text-slate-800">Lock lessons</h4><div id="adminLessons" class="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-8 lg:grid-cols-9"></div>
+        <h4 class="mt-6 text-sm font-extrabold text-slate-800">Active bookings <span id="activeCount" class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800"></span></h4><div id="adminBookings" class="mt-3 space-y-2"></div>
+        <h4 class="mt-6 text-sm font-extrabold text-slate-800">Completed</h4><div id="completedBookings" class="mt-3 space-y-2"></div>
+      </div>
+    </div>
+  </dialog>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

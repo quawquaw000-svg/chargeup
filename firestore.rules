@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+
+    function bookingHasSlot(date, bookingId, booking, lesson) {
+      return booking.start > lesson || booking.end < lesson
+        || (
+          existsAfter(/databases/$(database)/documents/days/$(date)/lessons/$(lesson)/cables/$(booking.cables[lesson - booking.start]))
+          && getAfter(/databases/$(database)/documents/days/$(date)/lessons/$(lesson)/cables/$(booking.cables[lesson - booking.start])).data.bookingId == bookingId
+          && getAfter(/databases/$(database)/documents/days/$(date)/lessons/$(lesson)/cables/$(booking.cables[lesson - booking.start])).data.owner == booking.owner
+        );
+    }
+
+    function bookingHasAllSlots(date, bookingId, booking) {
+      return bookingHasSlot(date, bookingId, booking, 1)
+        && bookingHasSlot(date, bookingId, booking, 2)
+        && bookingHasSlot(date, bookingId, booking, 3)
+        && bookingHasSlot(date, bookingId, booking, 4)
+        && bookingHasSlot(date, bookingId, booking, 5)
+        && bookingHasSlot(date, bookingId, booking, 6)
+        && bookingHasSlot(date, bookingId, booking, 7)
+        && bookingHasSlot(date, bookingId, booking, 8)
+        && bookingHasSlot(date, bookingId, booking, 9);
+    }
+
+    match /admins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /days/{date}/bookings/{bookingId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'id', 'uid', 'name', 'className', 'start', 'end',
+          'owner', 'status', 'cables', 'createdAt'
+        ])
+        && request.resource.data.id == bookingId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.className is string
+        && request.resource.data.className.size() > 0
+        && request.resource.data.className.size() <= 24
+        && request.resource.data.start is int
+        && request.resource.data.end is int
+        && request.resource.data.start >= 1
+        && request.resource.data.end <= 9
+        && request.resource.data.end >= request.resource.data.start
+        && request.resource.data.owner in ['Vincent', 'Max']
+        && request.resource.data.status == 'active'
+        && request.resource.data.cables is list
+        && request.resource.data.cables.size() == request.resource.data.end - request.resource.data.start + 1
+        && request.resource.data.cables.toSet().hasOnly(['1', '2', '3', '4'])
+        && request.resource.data.createdAt == request.time
+        && bookingHasAllSlots(date, bookingId, request.resource.data);
+      allow update: if isAdmin()
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'completed'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
+    }
+
+    match /days/{date}/lessons/{lessonId}/cables/{cableId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && lessonId in ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        && cableId in ['1', '2', '3', '4']
+        && request.resource.data.keys().hasOnly(['bookingId', 'owner'])
+        && request.resource.data.bookingId is string
+        && request.resource.data.owner in ['Vincent', 'Max']
+        && (
+          (request.resource.data.owner == 'Vincent' && cableId in ['1', '2'])
+          || (request.resource.data.owner == 'Max' && cableId in ['3', '4'])
+        )
+        && !exists(/databases/$(database)/documents/days/$(date)/blocked/$(lessonId))
+        && existsAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId))
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.owner == request.resource.data.owner
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.start <= int(lessonId)
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.end >= int(lessonId)
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.cables[int(lessonId) - getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.start] == cableId;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /days/{date}/blocked/{lessonId} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && lessonId in ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        && request.resource.data.keys().hasOnly(['lesson'])
+        && request.resource.data.lesson == int(lessonId);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+  }
+}
