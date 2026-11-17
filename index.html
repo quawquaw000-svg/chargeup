@@ -111,6 +111,8 @@
               <label class="block text-sm font-bold text-slate-700">Start lesson<select id="startLesson" name="startLesson" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"></select></label>
               <label class="block text-sm font-bold text-slate-700">End lesson<select id="endLesson" name="endLesson" required class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"></select></label>
             </div>
+            <label class="block text-sm font-bold text-slate-700">Pick up from<select id="pickupOwner" name="pickupOwner" required aria-describedby="pickupOwnerAvailability" class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"><option value="Vincent">Vincent</option><option value="Max">Max</option></select></label>
+            <p id="pickupOwnerAvailability" class="text-xs leading-5 text-slate-500" aria-live="polite">Choose who you’ll collect your cable from.</p>
             <div class="flex items-center justify-between rounded-2xl bg-[#f6f8f3] px-4 py-3.5"><div><p class="text-sm font-bold text-slate-700">Total to pay at pickup</p><p id="lessonCount" class="mt-0.5 text-xs text-slate-500">Choose your lessons</p></div><p id="totalPrice" class="display-font text-2xl font-extrabold text-emerald-800">CHF 0</p></div>
             <button id="submitBooking" type="submit" class="focus-ring w-full rounded-full bg-emerald-800 px-5 py-3.5 font-extrabold text-white shadow-md shadow-emerald-950/10 transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">Reserve my cable</button>
             <p class="text-center text-xs leading-5 text-slate-500">Cash payment on pickup only. CHF 1 per lesson, paid directly to Vincent or Max.</p>
@@ -140,6 +142,6 @@
       </div>
     </div>
   </dialog>
-  <script type="module" src="./app.js?v=2"></script>
+  <script type="module" src="./app.js?v=3"></script>
 </body>
 </html>

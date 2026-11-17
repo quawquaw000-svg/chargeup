@@ -2,6 +2,8 @@
 
 A static, GitHub Pages-ready charger booking page. The site has no build step. When Firebase is configured, bookings, lesson locks, and cable availability are stored in Firestore and synchronized live. Without Firebase configuration, it runs in browser-only demo mode.
 
+Students choose Vincent or Max as the pickup person. Each has two cables; the selected person must have a cable free for every lesson in the requested range. Availability is checked again inside the reservation transaction to handle simultaneous bookings safely.
+
 ## One-time Firebase setup
 
 The Firebase project and web app are already created. Firestore is in the Zurich (`europe-west6`) region and starts in production/deny-by-default mode.

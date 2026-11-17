@@ -36,6 +36,7 @@ const timetable = el("timetable");
 const bookingForm = el("bookingForm");
 const startSelect = el("startLesson");
 const endSelect = el("endLesson");
+const pickupOwnerSelect = el("pickupOwner");
 const adminDialog = el("adminDialog");
 let activeDate = "";
 let dayState = { bookings: [], blockedLessons: [], slots: [] };
@@ -90,6 +91,54 @@ function lessonUsed(state, lesson) {
   return state.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length;
 }
 
+function ownerUsed(state, owner, lesson) {
+  if (database) return state.slots.filter((slot) => slot.lesson === lesson && slot.owner === owner).length;
+  return state.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length;
+}
+
+function ownerAvailability(state, owner, start, end) {
+  if (!start || end < start || state.blockedLessons.some((lesson) => lesson >= start && lesson <= end)) {
+    return { available: false, minimumFree: 0 };
+  }
+  const freeByLesson = [];
+  for (let lesson = start; lesson <= end; lesson += 1) {
+    freeByLesson.push(CABLES_PER_OWNER - ownerUsed(state, owner, lesson));
+  }
+  return {
+    available: freeByLesson.every((free) => free > 0),
+    minimumFree: Math.max(0, Math.min(...freeByLesson))
+  };
+}
+
+function updatePickupOwners() {
+  const start = Number(startSelect.value);
+  const end = Number(endSelect.value);
+  const options = new Map(Array.from(pickupOwnerSelect.options, (option) => [option.value, option]));
+  const availability = new Map();
+  for (const owner of OWNERS) {
+    const result = ownerAvailability(dayState, owner, start, end);
+    availability.set(owner, result);
+    const option = options.get(owner);
+    option.disabled = !result.available;
+    option.textContent = result.available
+      ? `${owner} — at least ${result.minimumFree}/2 free per lesson`
+      : `${owner} — unavailable for selected lessons`;
+  }
+
+  const availableOwners = OWNERS.filter((owner) => availability.get(owner).available);
+  if (!availableOwners.includes(pickupOwnerSelect.value) && availableOwners.length) {
+    pickupOwnerSelect.value = availableOwners[0];
+  }
+  const hasAvailableOwner = availableOwners.length > 0;
+  pickupOwnerSelect.setCustomValidity(
+    hasAvailableOwner ? "" : "Neither Vincent nor Max has a cable available for every selected lesson."
+  );
+  el("pickupOwnerAvailability").textContent = hasAvailableOwner
+    ? `Choose who you’ll collect your cable from. ${availableOwners.join(" and ")} ${availableOwners.length === 1 ? "is" : "are"} available for every selected lesson.`
+    : "No pickup person has a cable available for every selected lesson.";
+  el("submitBooking").disabled = busy || !hasAvailableOwner;
+}
+
 function updatePrice() {
   const start = Number(startSelect.value);
   const end = Number(endSelect.value);
@@ -97,6 +146,7 @@ function updatePrice() {
   el("lessonCount").textContent = count ? `${count} lesson${count === 1 ? "" : "s"} · ${count * 45} minutes` : "Choose your lessons";
   el("totalPrice").textContent = `CHF ${count}`;
   endSelect.setCustomValidity(end && end < start ? "End lesson must be the same as or later than the start lesson." : "");
+  updatePickupOwners();
 }
 
 function renderTimetable() {
@@ -211,7 +261,7 @@ function renderAdmin() {
 
 function setBusy(value) {
   busy = value;
-  el("submitBooking").disabled = value;
+  updatePickupOwners();
   for (const button of document.querySelectorAll("#adminLessons button, #adminBookings button")) button.disabled = value;
 }
 
@@ -343,22 +393,7 @@ function ownerCableIds(owner) {
   return owner === "Vincent" ? ["1", "2"] : ["3", "4"];
 }
 
-function ownerForLocalBooking(state, start, end) {
-  const candidates = OWNERS.map((owner) => {
-    let load = 0;
-    let canServe = true;
-    for (let lesson = start; lesson <= end; lesson += 1) {
-      const ownerLoad = state.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length;
-      load += ownerLoad;
-      if (ownerLoad >= CABLES_PER_OWNER) canServe = false;
-    }
-    return { owner, load, canServe };
-  }).filter((candidate) => candidate.canServe);
-  candidates.sort((a, b) => a.load - b.load || OWNERS.indexOf(a.owner) - OWNERS.indexOf(b.owner));
-  return candidates[0]?.owner || null;
-}
-
-async function createFirebaseBooking({ name, className, start, end }) {
+async function createFirebaseBooking({ name, className, start, end, owner }) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Your session is not ready. Refresh the page and try again.");
   const bookingId = crypto.randomUUID();
@@ -379,36 +414,21 @@ async function createFirebaseBooking({ name, className, start, end }) {
     for (let index = 0; index < blockedSnapshots.length; index += 1) {
       if (blockedSnapshots[index].exists()) throw new Error(`Lesson ${start + index} is locked and cannot be booked.`);
     }
-    const candidates = OWNERS.map((owner) => {
-      let score = 0;
-      const cables = [];
-      let available = true;
-      for (let lesson = start; lesson <= end; lesson += 1) {
-        const ownerCables = ownerCableIds(owner);
-        const openCable = ownerCables.find((cable) => {
-          const index = slotRefs.findIndex((slot) => slot.lesson === lesson && slot.cable === cable);
-          if (slotSnapshots[index].exists()) {
-            score += 1;
-            return false;
-          }
-          return true;
-        });
-        if (!openCable) {
-          available = false;
-          break;
-        }
-        cables.push(openCable);
+    const cables = [];
+    for (let lesson = start; lesson <= end; lesson += 1) {
+      const ownerCableIdsForLesson = ownerCableIds(owner);
+      const openCable = ownerCableIdsForLesson.find((cable) => {
+        const index = slotRefs.findIndex((slot) => slot.lesson === lesson && slot.cable === cable);
+        return !slotSnapshots[index].exists();
+      });
+      if (!openCable) {
+        const allCablesTaken = slotRefs
+          .filter((slot) => slot.lesson === lesson)
+          .every((slot) => slotSnapshots[slotRefs.indexOf(slot)].exists());
+        if (allCablesTaken) throw new Error(`Lesson ${lesson} just sold out. Please choose another time.`);
+        throw new Error(`${owner} is fully booked for at least one selected lesson. Please choose ${owner === "Vincent" ? "Max" : "Vincent"} or adjust the lesson range.`);
       }
-      return { owner, score, cables, available };
-    }).filter((candidate) => candidate.available);
-    candidates.sort((a, b) => a.score - b.score || OWNERS.indexOf(a.owner) - OWNERS.indexOf(b.owner));
-    const selected = candidates[0];
-    if (!selected) {
-      const fullLesson = Array.from({ length: end - start + 1 }, (_, index) => start + index)
-        .find((lesson) => slotRefs.filter((slot) => slot.lesson === lesson)
-          .every((slot) => slotSnapshots[slotRefs.indexOf(slot)].exists()));
-      if (fullLesson) throw new Error(`Lesson ${fullLesson} just sold out. Please choose another time.`);
-      throw new Error("No cable owner is available for every lesson in that range. Please choose another time.");
+      cables.push(openCable);
     }
     const booking = {
       id: bookingId,
@@ -417,16 +437,16 @@ async function createFirebaseBooking({ name, className, start, end }) {
       className,
       start,
       end,
-      owner: selected.owner,
+      owner,
       status: "active",
-      cables: selected.cables,
+      cables,
       createdAt: firestore.serverTimestamp()
     };
     transaction.set(bookingRef, booking);
-    selected.cables.forEach((cable, index) => {
+    cables.forEach((cable, index) => {
       const lesson = start + index;
       const slotRef = firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable);
-      transaction.set(slotRef, { bookingId, owner: selected.owner });
+      transaction.set(slotRef, { bookingId, owner });
     });
   });
 }
@@ -462,6 +482,7 @@ startSelect.addEventListener("change", () => {
   updatePrice();
 });
 endSelect.addEventListener("change", updatePrice);
+pickupOwnerSelect.addEventListener("change", updatePickupOwners);
 
 for (let lesson = 1; lesson <= LESSONS; lesson += 1) {
   for (const select of [startSelect, endSelect]) {
@@ -479,6 +500,7 @@ bookingForm.addEventListener("submit", async (event) => {
   const className = el("studentClass").value.trim();
   const start = Number(startSelect.value);
   const end = Number(endSelect.value);
+  const owner = pickupOwnerSelect.value;
   if (!name || !className || start < 1 || end < start || end > LESSONS) {
     showBookingMessage("Please enter your name and class, and choose a valid lesson range.", "error");
     return;
@@ -490,7 +512,7 @@ bookingForm.addEventListener("submit", async (event) => {
   setBusy(true);
   try {
     if (database) {
-      await createFirebaseBooking({ name, className, start, end });
+      await createFirebaseBooking({ name, className, start, end, owner });
     } else {
       await localUpdateDay(activeDate, (latest) => {
         for (let lesson = start; lesson <= end; lesson += 1) {
@@ -498,9 +520,11 @@ bookingForm.addEventListener("submit", async (event) => {
           if (latest.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length >= TOTAL_CABLES) {
             throw new Error(`Lesson ${lesson} just sold out. Please choose another time.`);
           }
+          const ownerUsedForLesson = latest.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length;
+          if (ownerUsedForLesson >= CABLES_PER_OWNER) {
+            throw new Error(`${owner} is fully booked for at least one selected lesson. Please choose ${owner === "Vincent" ? "Max" : "Vincent"} or adjust the lesson range.`);
+          }
         }
-        const owner = ownerForLocalBooking(latest, start, end);
-        if (!owner) throw new Error("No cable owner is available for every lesson in that range. Please choose another time.");
         const booking = {
           id: crypto.randomUUID(),
           name,
@@ -518,7 +542,7 @@ bookingForm.addEventListener("submit", async (event) => {
     startSelect.value = "1";
     endSelect.value = "1";
     updatePrice();
-    showBookingMessage("Your cable is reserved! Pay cash to Vincent or Max when you pick it up.", "success");
+    showBookingMessage(`Your cable is reserved! Pick it up from ${owner}. Pay CHF ${end - start + 1} in cash.`, "success");
   } catch (error) {
     console.error("Booking could not be saved:", error);
     showBookingMessage(error.message || "Your booking could not be saved. Please try again.", "error");
