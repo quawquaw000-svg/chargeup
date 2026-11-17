@@ -329,7 +329,7 @@ async function initializeData() {
     firestore = firestoreModule;
     authModule = authSdk;
     auth = authSdk.getAuth(app);
-    await authSdk.setPersistence(auth, authSdk.browserSessionPersistence);
+    await authSdk.setPersistence(auth, authSdk.inMemoryPersistence);
     await authSdk.signInAnonymously(auth);
     subscribeToDate(activeDate);
   } catch (error) {
