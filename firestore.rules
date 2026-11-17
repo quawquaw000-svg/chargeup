@@ -32,6 +32,15 @@ service cloud.firestore {
         && bookingHasSlot(date, bookingId, booking, 9);
     }
 
+    function bookingHasQuota(date, bookingId, booking) {
+      let quotaPath = /databases/$(database)/documents/days/$(date)/bookingLimits/$(request.auth.uid);
+      return booking.limitSlot in ['1', '2']
+        && existsAfter(quotaPath)
+        && getAfter(quotaPath).data.uid == request.auth.uid
+        && getAfter(quotaPath).data.count >= int(booking.limitSlot)
+        && getAfter(quotaPath).data.lastBookingId == bookingId;
+    }
+
     match /admins/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list, create, update, delete: if false;
@@ -42,7 +51,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           'id', 'uid', 'name', 'className', 'start', 'end',
-          'owner', 'status', 'cables', 'createdAt'
+          'owner', 'status', 'cables', 'limitSlot', 'createdAt'
         ])
         && request.resource.data.id == bookingId
         && request.resource.data.uid == request.auth.uid
@@ -63,7 +72,8 @@ service cloud.firestore {
         && request.resource.data.cables.size() == request.resource.data.end - request.resource.data.start + 1
         && request.resource.data.cables.toSet().hasOnly(['1', '2', '3', '4'])
         && request.resource.data.createdAt == request.time
-        && bookingHasAllSlots(date, bookingId, request.resource.data);
+        && bookingHasAllSlots(date, bookingId, request.resource.data)
+        && bookingHasQuota(date, bookingId, request.resource.data);
       allow update: if isAdmin()
         && resource.data.status == 'active'
         && request.resource.data.status == 'completed'
@@ -73,7 +83,13 @@ service cloud.firestore {
 
     match /days/{date}/lessons/{lessonId}/cables/{cableId} {
       allow read: if signedIn();
-      allow create: if signedIn()
+      allow create: if (isAdmin()
+        && request.resource.data.keys().hasOnly(['owner', 'restricted'])
+        && request.resource.data.owner in ['Vincent', 'Max']
+        && request.resource.data.restricted == true
+        && ((request.resource.data.owner == 'Vincent' && cableId in ['1', '2'])
+          || (request.resource.data.owner == 'Max' && cableId in ['3', '4']))
+      ) || (signedIn()
         && lessonId in ['1', '2', '3', '4', '5', '6', '7', '8', '9']
         && cableId in ['1', '2', '3', '4']
         && request.resource.data.keys().hasOnly(['bookingId', 'owner'])
@@ -92,6 +108,36 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.cables[int(lessonId) - getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.start] == cableId;
       allow update: if false;
       allow delete: if isAdmin();
+    }
+
+    match /days/{date}/bookingLimits/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['bookingId', 'lastBookingId', 'uid', 'count', 'updatedAt'])
+        && request.resource.data.count == 1
+        && request.resource.data.bookingId is string
+        && request.resource.data.lastBookingId == request.resource.data.bookingId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId))
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.bookingId)).data.limitSlot == '1';
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && resource.data.uid == uid
+        && resource.data.count == 1
+        && request.resource.data.count == 2
+        && request.resource.data.keys().hasOnly(['bookingId', 'lastBookingId', 'uid', 'count', 'updatedAt'])
+        && request.resource.data.bookingId == resource.data.bookingId
+        && request.resource.data.lastBookingId is string
+        && request.resource.data.lastBookingId != resource.data.lastBookingId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.lastBookingId))
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.lastBookingId)).data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/days/$(date)/bookings/$(request.resource.data.lastBookingId)).data.limitSlot == '2';
+      allow delete: if false;
     }
 
     match /days/{date}/blocked/{lessonId} {

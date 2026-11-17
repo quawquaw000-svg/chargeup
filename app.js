@@ -57,7 +57,7 @@ function localDateString(date = new Date()) {
 }
 
 function blankDay() {
-  return { bookings: [], blockedLessons: [], slots: [] };
+  return { bookings: [], blockedLessons: [], restrictions: [], slots: [] };
 }
 
 function normalizeDay(value) {
@@ -68,7 +68,10 @@ function normalizeDay(value) {
   const blockedLessons = Array.isArray(value.blockedLessons)
     ? [...new Set(value.blockedLessons.filter((lesson) => Number.isInteger(lesson) && lesson >= 1 && lesson <= LESSONS))]
     : [];
-  return { bookings, blockedLessons, slots: [] };
+  const restrictions = Array.isArray(value.restrictions)
+    ? value.restrictions.filter((item) => item && Number.isInteger(item.lesson) && item.lesson >= 1 && item.lesson <= LESSONS && OWNERS.includes(item.owner) && Array.isArray(item.cables))
+    : [];
+  return { bookings, blockedLessons, restrictions, slots: [] };
 }
 
 function setStatus(message, kind = "ready") {
@@ -87,13 +90,19 @@ function lessonTime(lesson) {
 }
 
 function lessonUsed(state, lesson) {
-  if (database) return state.slots.filter((slot) => slot.lesson === lesson).length;
-  return state.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length;
+  const restricted = database ? 0 : state.restrictions
+    .filter((restriction) => restriction.lesson === lesson)
+    .reduce((count, restriction) => count + restriction.cables.length, 0);
+  if (database) return state.slots.filter((slot) => slot.lesson === lesson).length + restricted;
+  return state.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length + restricted;
 }
 
 function ownerUsed(state, owner, lesson) {
-  if (database) return state.slots.filter((slot) => slot.lesson === lesson && slot.owner === owner).length;
-  return state.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length;
+  const restricted = database ? 0 : state.restrictions
+    .filter((restriction) => restriction.lesson === lesson && restriction.owner === owner)
+    .reduce((count, restriction) => count + restriction.cables.length, 0);
+  if (database) return state.slots.filter((slot) => slot.lesson === lesson && slot.owner === owner).length + restricted;
+  return state.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length + restricted;
 }
 
 function ownerAvailability(state, owner, start, end) {
@@ -228,13 +237,43 @@ function renderAdmin() {
   lessons.replaceChildren();
   for (let lesson = 1; lesson <= LESSONS; lesson += 1) {
     const blocked = dayState.blockedLessons.includes(lesson);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.lesson = String(lesson);
-    button.className = `focus-ring rounded-xl border px-2 py-2 text-xs font-bold ${blocked ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"}`;
-    button.textContent = `L${lesson} ${lessonTime(lesson)[0]} · ${blocked ? "Locked" : "Open"}`;
-    button.disabled = busy;
-    lessons.append(button);
+    const row = document.createElement("div");
+    row.className = "col-span-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:col-span-8 lg:col-span-9 lg:grid-cols-[1fr_1fr_1fr_auto]";
+    const title = document.createElement("p");
+    title.className = "col-span-2 self-center text-sm font-bold text-slate-800 lg:col-span-1";
+    title.textContent = `Lesson ${lesson} · ${lessonTime(lesson)[0]} · ${blocked ? "Locked" : "Open"}`;
+    row.append(title);
+    for (const owner of OWNERS) {
+      const label = document.createElement("label");
+      label.className = "text-xs font-semibold text-slate-600";
+      label.textContent = `${owner} unavailable`;
+      const select = document.createElement("select");
+      select.dataset.lesson = String(lesson);
+      select.dataset.owner = owner;
+      select.className = "focus-ring mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm";
+      select.setAttribute("aria-label", `Number of ${owner}'s unavailable cables for lesson ${lesson}`);
+      const restricted = database
+        ? dayState.slots.filter((slot) => slot.lesson === lesson && slot.owner === owner && slot.restricted).length
+        : dayState.restrictions.find((item) => item.lesson === lesson && item.owner === owner)?.cables.length ?? 0;
+      for (let count = 0; count <= CABLES_PER_OWNER; count += 1) {
+        const option = document.createElement("option");
+        option.value = String(count);
+        option.textContent = `${count} of 2`;
+        option.selected = count === restricted;
+        select.append(option);
+      }
+      select.disabled = busy || blocked;
+      label.append(select);
+      row.append(label);
+    }
+    const lockButton = document.createElement("button");
+    lockButton.type = "button";
+    lockButton.dataset.lesson = String(lesson);
+    lockButton.className = `focus-ring col-span-2 rounded-lg border px-3 py-2 text-xs font-bold lg:col-span-1 ${blocked ? "border-emerald-200 text-emerald-800" : "border-rose-200 text-rose-700"}`;
+    lockButton.textContent = blocked ? "Unlock all" : "Lock all";
+    lockButton.disabled = busy;
+    row.append(lockButton);
+    lessons.append(row);
   }
   const active = dayState.bookings.filter((booking) => booking.status === "active");
   const completed = dayState.bookings.filter((booking) => booking.status === "completed");
@@ -262,7 +301,7 @@ function renderAdmin() {
 function setBusy(value) {
   busy = value;
   updatePickupOwners();
-  for (const button of document.querySelectorAll("#adminLessons button, #adminBookings button")) button.disabled = value;
+  for (const control of document.querySelectorAll("#adminLessons button, #adminLessons select, #adminBookings button")) control.disabled = value;
 }
 
 function readLocalDay(date) {
@@ -318,7 +357,8 @@ function subscribeToDate(date) {
         ...snapshot.docs.map((slotDoc) => ({
           id: slotDoc.id,
           lesson,
-          owner: slotDoc.data().owner
+          owner: slotDoc.data().owner,
+          restricted: slotDoc.data().restricted === true
         }))
       ];
       setStatus("Live availability · synced across devices", "ready");
@@ -379,18 +419,17 @@ async function initializeData() {
     firestore = firestoreModule;
     authModule = authSdk;
     auth = authSdk.getAuth(app);
-    await authSdk.setPersistence(auth, authSdk.inMemoryPersistence);
-    await authSdk.signInAnonymously(auth);
+    await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    if (!auth.currentUser?.isAnonymous) {
+      if (auth.currentUser) await authSdk.signOut(auth);
+      await authSdk.signInAnonymously(auth);
+    }
     subscribeToDate(activeDate);
   } catch (error) {
     console.error("Firebase setup failed:", error);
     setStatus("Firebase could not connect. Check the config, Authentication, and Firestore.", "error");
-    showBookingMessage("Live data is unavailable. Check your Firebase config, enable Anonymous Authentication, and deploy firestore.rules.", "error");
+    showBookingMessage("Live data is unavailable. Check your Firebase config, enable Anonymous Authentication, and publish the Firestore rules.", "error");
   }
-}
-
-function ownerCableIds(owner) {
-  return owner === "Vincent" ? ["1", "2"] : ["3", "4"];
 }
 
 async function createFirebaseBooking({ name, className, start, end, owner }) {
@@ -398,26 +437,36 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
   if (!uid) throw new Error("Your session is not ready. Refresh the page and try again.");
   const bookingId = crypto.randomUUID();
   const bookingRef = firestore.doc(database, "days", activeDate, "bookings", bookingId);
-  const slotRefs = [];
+  const quotaRef = firestore.doc(database, "days", activeDate, "bookingLimits", uid);
   const blockedRefs = [];
+  const slotRefs = [];
   for (let lesson = start; lesson <= end; lesson += 1) {
     blockedRefs.push(firestore.doc(database, "days", activeDate, "blocked", String(lesson)));
     for (const cable of ["1", "2", "3", "4"]) {
-      slotRefs.push({ lesson, cable, ref: firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable) });
+      slotRefs.push({
+        lesson,
+        cable,
+        ref: firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable)
+      });
     }
   }
   await firestore.runTransaction(database, async (transaction) => {
-    const [blockedSnapshots, slotSnapshots] = await Promise.all([
+    const [quotaSnapshot, blockedSnapshots, slotSnapshots] = await Promise.all([
+      transaction.get(quotaRef),
       Promise.all(blockedRefs.map((ref) => transaction.get(ref))),
       Promise.all(slotRefs.map((slot) => transaction.get(slot.ref)))
     ]);
+    const previousCount = quotaSnapshot.exists() ? quotaSnapshot.data().count : 0;
+    if (!Number.isInteger(previousCount) || previousCount < 0 || previousCount >= 2) {
+      throw new Error("This anonymous account has reached its limit of 2 bookings for this date. A new browser session may have a separate limit.");
+    }
     for (let index = 0; index < blockedSnapshots.length; index += 1) {
       if (blockedSnapshots[index].exists()) throw new Error(`Lesson ${start + index} is locked and cannot be booked.`);
     }
     const cables = [];
     for (let lesson = start; lesson <= end; lesson += 1) {
-      const ownerCableIdsForLesson = ownerCableIds(owner);
-      const openCable = ownerCableIdsForLesson.find((cable) => {
+      const ownerCableIds = owner === "Vincent" ? ["1", "2"] : ["3", "4"];
+      const openCable = ownerCableIds.find((cable) => {
         const index = slotRefs.findIndex((slot) => slot.lesson === lesson && slot.cable === cable);
         return !slotSnapshots[index].exists();
       });
@@ -430,7 +479,7 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
       }
       cables.push(openCable);
     }
-    const booking = {
+    transaction.set(bookingRef, {
       id: bookingId,
       uid,
       name,
@@ -440,9 +489,16 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
       owner,
       status: "active",
       cables,
+      limitSlot: String(previousCount + 1),
       createdAt: firestore.serverTimestamp()
-    };
-    transaction.set(bookingRef, booking);
+    });
+    transaction.set(quotaRef, {
+      bookingId: quotaSnapshot.exists() ? quotaSnapshot.data().bookingId : bookingId,
+      lastBookingId: bookingId,
+      uid,
+      count: previousCount + 1,
+      updatedAt: firestore.serverTimestamp()
+    });
     cables.forEach((cable, index) => {
       const lesson = start + index;
       const slotRef = firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable);
@@ -457,6 +513,34 @@ async function toggleFirebaseBlock(lesson) {
     const snapshot = await transaction.get(blockedRef);
     if (snapshot.exists()) transaction.delete(blockedRef);
     else transaction.set(blockedRef, { lesson });
+  });
+}
+
+async function setFirebaseRestriction(lesson, owner, count) {
+  const ownerCableIds = owner === "Vincent" ? ["1", "2"] : ["3", "4"];
+  const slotRefs = ownerCableIds.map((cable) => firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable));
+  await firestore.runTransaction(database, async (transaction) => {
+    const slotSnapshots = await Promise.all(slotRefs.map((ref) => transaction.get(ref)));
+    const existingRestricted = slotSnapshots.flatMap((snapshot, index) =>
+      snapshot.exists() && snapshot.data().restricted === true ? [ownerCableIds[index]] : []
+    );
+    const nextRestricted = existingRestricted.slice(0, count);
+    const available = slotSnapshots.flatMap((snapshot, index) =>
+      !snapshot.exists() ? [ownerCableIds[index]] : []
+    );
+    nextRestricted.push(...available.slice(0, Math.max(0, count - nextRestricted.length)));
+    if (nextRestricted.length !== count) {
+      throw new Error(`Only ${nextRestricted.length} of ${owner}'s cables can be restricted in lesson ${lesson} because the others are booked.`);
+    }
+    for (let index = 0; index < slotRefs.length; index += 1) {
+      const cable = ownerCableIds[index];
+      const snapshot = slotSnapshots[index];
+      if (snapshot.exists() && snapshot.data().restricted === true && !nextRestricted.includes(cable)) {
+        transaction.delete(slotRefs[index]);
+      } else if (!snapshot.exists() && nextRestricted.includes(cable)) {
+        transaction.set(slotRefs[index], { owner, restricted: true });
+      }
+    }
   });
 }
 
@@ -517,10 +601,16 @@ bookingForm.addEventListener("submit", async (event) => {
       await localUpdateDay(activeDate, (latest) => {
         for (let lesson = start; lesson <= end; lesson += 1) {
           if (latest.blockedLessons.includes(lesson)) throw new Error(`Lesson ${lesson} is locked and cannot be booked.`);
-          if (latest.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length >= TOTAL_CABLES) {
+          const restrictedTotal = latest.restrictions
+            .filter((restriction) => restriction.lesson === lesson)
+            .reduce((count, restriction) => count + restriction.cables.length, 0);
+          if (latest.bookings.filter((booking) => booking.status === "active" && booking.start <= lesson && booking.end >= lesson).length + restrictedTotal >= TOTAL_CABLES) {
             throw new Error(`Lesson ${lesson} just sold out. Please choose another time.`);
           }
-          const ownerUsedForLesson = latest.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length;
+          const ownerRestrictions = latest.restrictions
+            .filter((restriction) => restriction.lesson === lesson && restriction.owner === owner)
+            .reduce((count, restriction) => count + restriction.cables.length, 0);
+          const ownerUsedForLesson = latest.bookings.filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson).length + ownerRestrictions;
           if (ownerUsedForLesson >= CABLES_PER_OWNER) {
             throw new Error(`${owner} is fully booked for at least one selected lesson. Please choose ${owner === "Vincent" ? "Max" : "Vincent"} or adjust the lesson range.`);
           }
@@ -606,6 +696,39 @@ el("adminLogout").addEventListener("click", async () => {
       console.error("Could not restore the student session:", error);
       setStatus("Signed out. Refresh to reconnect to live availability.", "error");
     }
+  }
+});
+
+el("adminLessons").addEventListener("change", async (event) => {
+  const select = event.target.closest("select[data-lesson][data-owner]");
+  if (!select || busy) return;
+  const lesson = Number(select.dataset.lesson);
+  const owner = select.dataset.owner;
+  const count = Number(select.value);
+  setBusy(true);
+  try {
+    if (database) {
+      await setFirebaseRestriction(lesson, owner, count);
+    } else {
+      localUpdateDay(activeDate, (latest) => {
+        const ownerCableIds = owner === "Vincent" ? ["1", "2"] : ["3", "4"];
+        const booked = latest.bookings
+          .filter((booking) => booking.status === "active" && booking.owner === owner && booking.start <= lesson && booking.end >= lesson);
+        if (count + booked.length > CABLES_PER_OWNER) {
+          throw new Error(`Only ${CABLES_PER_OWNER - booked.length} of ${owner}'s cables are currently free in lesson ${lesson}. Cancel a booking first or choose a lower restriction.`);
+        }
+        const cables = ownerCableIds.slice(0, count);
+        const restrictions = latest.restrictions.filter((item) => item.lesson !== lesson || item.owner !== owner);
+        if (count) restrictions.push({ lesson, owner, cables });
+        return { ...latest, restrictions };
+      });
+    }
+  } catch (error) {
+    console.error("Lesson restriction could not be changed:", error);
+    showBookingMessage(error.message || "Could not change the lesson restriction.", "error");
+  } finally {
+    setBusy(false);
+    renderAdmin();
   }
 });
 
