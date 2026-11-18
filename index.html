@@ -75,7 +75,7 @@
             </div>
             <div class="relative mt-4 flex items-center justify-center gap-2 text-xs font-semibold text-emerald-950/70"><span class="grid h-6 w-6 place-items-center rounded-lg bg-white/80" aria-hidden="true">↗</span>Book it. Pick it up. Plug in.</div>
           </div>
-          <div class="absolute -left-5 top-1/2 hidden -translate-y-1/2 rounded-2xl border border-white bg-white px-4 py-3 shadow-lg sm:block"><p class="text-xs font-semibold text-slate-500">No online payment</p><p class="mt-0.5 text-sm font-extrabold text-emerald-800">Cash or TWINT at pickup 💵</p></div>
+          <div class="absolute -left-5 top-1/2 hidden -translate-y-1/2 rounded-2xl border border-white bg-white px-4 py-3 shadow-lg sm:block"><p class="text-xs font-semibold text-slate-500">No online payment</p><p class="mt-0.5 text-sm font-extrabold text-emerald-800">Cash at pickup 💵</p></div>
         </div>
       </section>
 
@@ -97,7 +97,7 @@
           <div class="mt-7 space-y-4">
             <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">1</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Reserve online</strong> — pick a date and your start and end lesson.</p></div>
             <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">2</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Find Vincent or Max</strong> to pick up your cable.</p></div>
-            <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">3</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Pay cash at pickup</strong> — CHF 1 for each lesson, no online payment.</p></div>
+            <div class="flex gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-lime-200 text-sm font-extrabold text-emerald-950">3</span><p class="pt-1 text-sm leading-6 text-slate-600"><strong class="text-slate-900">Pay cash at pickup</strong> — CHF 1 per lesson; promo codes can discount or cover the cost.</p></div>
           </div>
         </div>
         <div id="booking" class="scroll-mt-8 rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-[0_20px_65px_-42px_rgba(15,55,33,.35)] sm:p-8">
@@ -113,9 +113,17 @@
             </div>
             <label class="block text-sm font-bold text-slate-700">Pick up from<select id="pickupOwner" name="pickupOwner" required aria-describedby="pickupOwnerAvailability" class="focus-ring mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-semibold outline-none focus:border-emerald-600"><option value="Vincent">Vincent</option><option value="Max">Max</option></select></label>
             <p id="pickupOwnerAvailability" class="text-xs leading-5 text-slate-500" aria-live="polite">Choose who you’ll collect your cable from.</p>
+            <div>
+              <label for="promoCode" class="block text-sm font-bold text-slate-700">Promo code <span class="font-normal text-slate-400">(optional)</span></label>
+              <div class="mt-1.5 flex gap-2">
+                <input id="promoCode" type="text" maxlength="24" autocomplete="off" placeholder="Enter your code" class="focus-ring min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-3 font-medium uppercase outline-none placeholder:normal-case placeholder:text-slate-400 focus:border-emerald-600">
+                <button id="applyPromo" type="button" class="focus-ring rounded-xl border border-emerald-200 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50">Apply</button>
+              </div>
+              <p id="promoMessage" class="mt-1.5 min-h-5 text-xs text-slate-500" aria-live="polite"></p>
+            </div>
             <div class="flex items-center justify-between rounded-2xl bg-[#f6f8f3] px-4 py-3.5"><div><p class="text-sm font-bold text-slate-700">Total to pay at pickup</p><p id="lessonCount" class="mt-0.5 text-xs text-slate-500">Choose your lessons</p></div><p id="totalPrice" class="display-font text-2xl font-extrabold text-emerald-800">CHF 0</p></div>
             <button id="submitBooking" type="submit" class="focus-ring w-full rounded-full bg-emerald-800 px-5 py-3.5 font-extrabold text-white shadow-md shadow-emerald-950/10 transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">Reserve my cable</button>
-            <p class="text-center text-xs leading-5 text-slate-500">Cash payment on pickup only. CHF 1 per lesson, paid directly to Vincent or Max.</p>
+            <p class="text-center text-xs leading-5 text-slate-500">Any amount due is paid in cash at pickup. Valid promo codes can make a booking free.</p>
             <p class="text-center text-xs leading-5 text-slate-500">Limit: 2 bookings per anonymous account for each selected date. A new browser session may have a separate limit.</p>
           </form>
           <div id="bookingMessage" class="mt-4 hidden rounded-xl px-4 py-3 text-sm font-semibold" role="status" aria-live="polite"></div>
@@ -140,11 +148,28 @@
         <h4 class="mt-6 text-sm font-extrabold text-slate-800">Lesson availability</h4>
         <p class="mt-1 text-xs leading-5 text-slate-500">Set how many cables from Vincent or Max are unavailable in each lesson (0–2), or lock the whole lesson.</p>
         <div id="adminLessons" class="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-8 lg:grid-cols-9"></div>
+        <h4 class="mt-6 text-sm font-extrabold text-slate-800">Promo codes</h4>
+        <p class="mt-1 text-xs leading-5 text-slate-500">Create a single-use code for one free lesson, or a code valid for one month with unlimited free bookings.</p>
+        <form id="promoCreateForm" class="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <div class="flex gap-2">
+            <label class="sr-only" for="newPromoCode">New promo code</label>
+            <input id="newPromoCode" type="text" minlength="4" maxlength="24" pattern="[A-Za-z0-9-]{4,24}" required placeholder="Code (4–24 letters/numbers)" class="focus-ring min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase outline-none">
+            <button id="generatePromoCode" type="button" class="focus-ring rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Generate</button>
+          </div>
+          <label class="sr-only" for="newPromoType">Promo type</label>
+          <select id="newPromoType" class="focus-ring rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+            <option value="single">One free lesson · use once</option>
+            <option value="monthly">Unlimited free · one month</option>
+          </select>
+          <button id="createPromo" type="submit" class="focus-ring rounded-lg bg-emerald-800 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-900">Create code</button>
+        </form>
+        <p id="promoAdminMessage" class="mt-2 min-h-5 text-xs text-slate-600" aria-live="polite"></p>
+        <div id="adminPromos" class="mt-2 space-y-2"></div>
         <h4 class="mt-6 text-sm font-extrabold text-slate-800">Active bookings <span id="activeCount" class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800"></span></h4><div id="adminBookings" class="mt-3 space-y-2"></div>
         <h4 class="mt-6 text-sm font-extrabold text-slate-800">Completed</h4><div id="completedBookings" class="mt-3 space-y-2"></div>
       </div>
     </div>
   </dialog>
-  <script type="module" src="./app.js?v=6"></script>
+  <script type="module" src="./app.js?v=7"></script>
 </body>
 </html>

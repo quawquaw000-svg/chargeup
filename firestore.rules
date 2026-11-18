@@ -41,19 +41,111 @@ service cloud.firestore {
         && getAfter(quotaPath).data.lastBookingId == bookingId;
     }
 
+    function bookingHasPromo(date, bookingId, booking) {
+      let promoPath = /databases/$(database)/documents/promos/$(booking.promoCode);
+      return booking.promoCode is string
+        && booking.promoCode.matches('^[A-Z0-9-]{4,24}$')
+        && booking.freeLessons is int
+        && exists(promoPath)
+        && (
+          (
+            get(promoPath).data.type == 'monthly'
+            && get(promoPath).data.expiresAt > request.time
+            && booking.date == date
+            && booking.freeLessons == booking.end - booking.start + 1
+            && !('limitSlot' in booking)
+          )
+          || (
+            get(promoPath).data.type == 'single'
+            && get(promoPath).data.redeemed == false
+            && booking.start == booking.end
+            && booking.freeLessons == 1
+            && booking.limitSlot in ['1', '2']
+            && existsAfter(promoPath)
+            && getAfter(promoPath).data.redeemed == true
+            && getAfter(promoPath).data.redeemedBookingId == bookingId
+            && getAfter(promoPath).data.redeemedAt == request.time
+          )
+        );
+    }
+
+    function bookingHasValidPayment(date, bookingId, booking) {
+      return (
+        ('promoCode' in booking && bookingHasPromo(date, bookingId, booking))
+        || (!('promoCode' in booking) && !('freeLessons' in booking) && bookingHasQuota(date, bookingId, booking))
+      );
+    }
+
+    function singlePromoHasValidBooking() {
+      let bookingPath = /databases/$(database)/documents/days/$(request.resource.data.redeemedDate)/bookings/$(request.resource.data.redeemedBookingId);
+      let quotaPath = /databases/$(database)/documents/days/$(request.resource.data.redeemedDate)/bookingLimits/$(request.auth.uid);
+      return existsAfter(bookingPath)
+        && getAfter(bookingPath).data.date == request.resource.data.redeemedDate
+        && getAfter(bookingPath).data.uid == request.auth.uid
+        && getAfter(bookingPath).data.promoCode == resource.data.code
+        && getAfter(bookingPath).data.freeLessons == 1
+        && getAfter(bookingPath).data.limitSlot in ['1', '2']
+        && existsAfter(quotaPath)
+        && getAfter(quotaPath).data.uid == request.auth.uid
+        && getAfter(quotaPath).data.count >= int(getAfter(bookingPath).data.limitSlot)
+        && getAfter(quotaPath).data.lastBookingId == request.resource.data.redeemedBookingId;
+    }
+
     match /admins/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list, create, update, delete: if false;
+    }
+
+    match /promos/{code} {
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.code == code
+        && request.resource.data.code.matches('^[A-Z0-9-]{4,24}$')
+        && request.resource.data.createdAt == request.time
+        && (
+          (
+            request.resource.data.type == 'single'
+            && request.resource.data.keys().hasOnly(['code', 'type', 'createdAt', 'redeemed'])
+            && request.resource.data.redeemed == false
+          )
+          || (
+            request.resource.data.type == 'monthly'
+            && request.resource.data.keys().hasOnly(['code', 'type', 'createdAt', 'expiresAt'])
+            && request.resource.data.expiresAt is timestamp
+            && request.resource.data.expiresAt > request.time
+          )
+        );
+      allow update: if signedIn()
+        && resource.data.type == 'single'
+        && resource.data.redeemed == false
+        && request.resource.data.keys().hasOnly([
+          'code', 'type', 'createdAt', 'redeemed', 'redeemedBookingId', 'redeemedDate', 'redeemedAt'
+        ])
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.redeemed == true
+        && request.resource.data.redeemedBookingId is string
+        && request.resource.data.redeemedDate is string
+        && request.resource.data.redeemedAt == request.time
+        && singlePromoHasValidBooking();
+      allow delete: if isAdmin();
     }
 
     match /days/{date}/bookings/{bookingId} {
       allow read: if isAdmin();
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
-          'id', 'uid', 'name', 'className', 'start', 'end',
-          'owner', 'status', 'cables', 'limitSlot', 'createdAt'
+          'id', 'date', 'uid', 'name', 'className', 'start', 'end',
+          'owner', 'status', 'cables', 'limitSlot', 'createdAt', 'promoCode', 'freeLessons'
         ])
         && request.resource.data.id == bookingId
+        && (
+          ('promoCode' in request.resource.data && request.resource.data.date == date)
+          || (!('promoCode' in request.resource.data)
+            && (!('date' in request.resource.data) || request.resource.data.date == date))
+        )
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
@@ -73,7 +165,7 @@ service cloud.firestore {
         && request.resource.data.cables.toSet().hasOnly(['1', '2', '3', '4'])
         && request.resource.data.createdAt == request.time
         && bookingHasAllSlots(date, bookingId, request.resource.data)
-        && bookingHasQuota(date, bookingId, request.resource.data);
+        && bookingHasValidPayment(date, bookingId, request.resource.data);
       allow update: if isAdmin()
         && resource.data.status == 'active'
         && request.resource.data.status == 'completed'

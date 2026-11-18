@@ -20,6 +20,13 @@ Admins can set 0–2 unavailable cables for Vincent and Max independently for
 each lesson. Restrictions only apply to unbooked cables; remove an existing
 booking before restricting its cable. The full-lesson lock remains available.
 
+Admins can also create promo codes in the dashboard. A single-use code covers
+one one-lesson booking and is consumed by the first successful booking using
+it. A monthly code makes all bookings free and bypasses the two-bookings-per-day
+account limit until one calendar month after the code is created. Codes can be
+deleted to revoke them. The single-use redemption and booking are checked
+together by Firestore Rules.
+
 ## One-time Firebase setup
 
 The Firebase project and web app are already created. Firestore is in the Zurich
@@ -36,9 +43,8 @@ require Cloud Functions or the Blaze plan.
    rules.
 4. Publish [`firestore.rules`](./firestore.rules) in Firestore Database →
    **Rules**, then publish `index.html` and `app.js` to GitHub Pages. The rules
-   require each booking transaction to consume one of two immutable per-account
-   quota slots for its selected date, and enforce owner-specific lesson
-   restrictions.
+   enforce the account booking limit, promo redemption, and owner-specific
+   lesson restrictions.
 
 ## Publish on GitHub Pages
 

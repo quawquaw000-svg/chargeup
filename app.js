@@ -26,6 +26,7 @@ const TOTAL_CABLES = 4;
 const CABLES_PER_OWNER = 2;
 const OWNERS = ["Vincent", "Max"];
 const STORAGE_PREFIX = "chargeup-day-v1:";
+const PROMO_STORAGE_KEY = "chargeup-promos-v1";
 const DEMO_ADMIN_PASSWORD = "demo-admin";
 const firebaseConfigured = Object.values(firebaseConfig).some((value) => typeof value === "string" && value.trim());
 const firebaseConfigComplete = Object.values(firebaseConfig).every((value) => typeof value === "string" && value.trim());
@@ -40,6 +41,8 @@ const pickupOwnerSelect = el("pickupOwner");
 const adminDialog = el("adminDialog");
 let activeDate = "";
 let dayState = { bookings: [], blockedLessons: [], slots: [] };
+let promoCodes = [];
+let activePromo = null;
 let database = null;
 let firestore = null;
 let auth = null;
@@ -47,6 +50,7 @@ let authModule = null;
 let unsubscribeSlots = [];
 let unsubscribeBlocked = null;
 let unsubscribeBookings = null;
+let unsubscribePromos = null;
 let adminLoggedIn = false;
 let busy = false;
 let statusKind = "loading";
@@ -152,8 +156,13 @@ function updatePrice() {
   const start = Number(startSelect.value);
   const end = Number(endSelect.value);
   const count = start && end >= start ? end - start + 1 : 0;
+  if (activePromo?.type === "single" && count !== 1) {
+    activePromo = null;
+    showPromoMessage("This one-use code applies to a one-lesson booking. Reapply it after choosing one lesson.", "error");
+  }
   el("lessonCount").textContent = count ? `${count} lesson${count === 1 ? "" : "s"} · ${count * 45} minutes` : "Choose your lessons";
-  el("totalPrice").textContent = `CHF ${count}`;
+  const freeLessons = !activePromo || !count ? 0 : activePromo.type === "monthly" ? count : 1;
+  el("totalPrice").textContent = `CHF ${Math.max(0, count - freeLessons)}`;
   endSelect.setCustomValidity(end && end < start ? "End lesson must be the same as or later than the start lesson." : "");
   updatePickupOwners();
 }
@@ -191,6 +200,12 @@ function showBookingMessage(message, type) {
   box.setAttribute("role", type === "error" ? "alert" : "status");
 }
 
+function showPromoMessage(message, type = "info") {
+  const box = el("promoMessage");
+  box.textContent = message;
+  box.className = `mt-1.5 min-h-5 text-xs ${type === "error" ? "font-semibold text-rose-700" : type === "success" ? "font-semibold text-emerald-800" : "text-slate-500"}`;
+}
+
 function showAdminError(message) {
   const error = el("adminLoginError");
   error.textContent = message;
@@ -206,7 +221,10 @@ function createBookingCard(booking, completed = false) {
   name.textContent = booking.name;
   const summary = document.createElement("p");
   summary.className = "mt-1 text-xs leading-5 text-slate-500";
-  summary.textContent = `${booking.className} · Lessons ${booking.start}–${booking.end} · CHF ${booking.end - booking.start + 1} · ${booking.owner}`;
+  const lessonCount = booking.end - booking.start + 1;
+  const amountDue = Math.max(0, lessonCount - (booking.freeLessons || 0));
+  const promo = booking.promoCode ? ` · Promo ${booking.promoCode}` : "";
+  summary.textContent = `${booking.className} · Lessons ${booking.start}–${booking.end} · CHF ${amountDue} · ${booking.owner}${promo}`;
   details.append(name, summary);
   card.append(details);
   if (!completed) {
@@ -296,12 +314,54 @@ function renderAdmin() {
   } else {
     completed.sort((a, b) => a.start - b.start).forEach((booking) => el("completedBookings").append(createBookingCard(booking, true)));
   }
+  renderPromoCodes();
+}
+
+function renderPromoCodes() {
+  const container = el("adminPromos");
+  if (!container) return;
+  container.replaceChildren();
+  const promos = [...promoCodes].sort((a, b) => a.code.localeCompare(b.code));
+  if (!promos.length) {
+    const empty = document.createElement("p");
+    empty.className = "rounded-xl bg-slate-50 px-4 py-3 text-center text-xs text-slate-500";
+    empty.textContent = "No promo codes created yet.";
+    container.append(empty);
+    return;
+  }
+  for (const promo of promos) {
+    const row = document.createElement("div");
+    row.className = "flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between";
+    const details = document.createElement("div");
+    const code = document.createElement("p");
+    code.className = "font-mono text-sm font-bold tracking-wider text-slate-900";
+    code.textContent = promo.code;
+    const description = document.createElement("p");
+    description.className = "mt-1 text-xs text-slate-500";
+    if (promo.type === "monthly") {
+      const expiry = promo.expiresAt?.toDate ? promo.expiresAt.toDate() : new Date(promo.expiresAt);
+      description.textContent = expiry > new Date()
+        ? `Unlimited free bookings until ${expiry.toLocaleDateString()}`
+        : "Monthly promo expired";
+    } else {
+      description.textContent = promo.redeemed ? "Used · one free lesson" : "Unused · one free lesson";
+    }
+    details.append(code, description);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.promoCode = promo.code;
+    remove.className = "focus-ring self-start rounded-full border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 sm:self-auto";
+    remove.textContent = "Delete";
+    remove.disabled = busy;
+    row.append(details, remove);
+    container.append(row);
+  }
 }
 
 function setBusy(value) {
   busy = value;
   updatePickupOwners();
-  for (const control of document.querySelectorAll("#adminLessons button, #adminLessons select, #adminBookings button")) control.disabled = value;
+  for (const control of document.querySelectorAll("#adminLessons button, #adminLessons select, #adminBookings button, #promoCreateForm button, #promoCreateForm select, #adminPromos button, #applyPromo")) control.disabled = value;
 }
 
 function readLocalDay(date) {
@@ -332,6 +392,22 @@ function localUpdateDay(date, updater) {
     dayState = normalizeDay(next);
     renderTimetable();
   }
+}
+
+function readLocalPromos() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PROMO_STORAGE_KEY) || "[]");
+    return Array.isArray(value) ? value.filter((promo) => promo && typeof promo.code === "string") : [];
+  } catch (error) {
+    console.error("Could not read local promo codes:", error);
+    throw new Error("Could not read saved promo codes. No changes were made.", { cause: error });
+  }
+}
+
+function writeLocalPromos(promos) {
+  localStorage.setItem(PROMO_STORAGE_KEY, JSON.stringify(promos));
+  promoCodes = promos;
+  renderPromoCodes();
 }
 
 function stopSubscriptions() {
@@ -390,6 +466,18 @@ function subscribeToBookings(date) {
   });
 }
 
+function subscribeToPromos() {
+  if (unsubscribePromos) unsubscribePromos();
+  const promosRef = firestore.collection(database, "promos");
+  unsubscribePromos = firestore.onSnapshot(promosRef, (snapshot) => {
+    promoCodes = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    renderPromoCodes();
+  }, (error) => {
+    console.error("Promo code subscription failed:", error);
+    el("promoAdminMessage").textContent = "Could not load promo codes. Check Firestore Rules.";
+  });
+}
+
 async function initializeData() {
   if (!firebaseConfigured) {
     loadLocalDay(activeDate);
@@ -432,12 +520,13 @@ async function initializeData() {
   }
 }
 
-async function createFirebaseBooking({ name, className, start, end, owner }) {
+async function createFirebaseBooking({ name, className, start, end, owner, promoCode }) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Your session is not ready. Refresh the page and try again.");
   const bookingId = crypto.randomUUID();
   const bookingRef = firestore.doc(database, "days", activeDate, "bookings", bookingId);
   const quotaRef = firestore.doc(database, "days", activeDate, "bookingLimits", uid);
+  const promoRef = promoCode ? firestore.doc(database, "promos", promoCode) : null;
   const blockedRefs = [];
   const slotRefs = [];
   for (let lesson = start; lesson <= end; lesson += 1) {
@@ -451,13 +540,22 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
     }
   }
   await firestore.runTransaction(database, async (transaction) => {
-    const [quotaSnapshot, blockedSnapshots, slotSnapshots] = await Promise.all([
+    const [quotaSnapshot, blockedSnapshots, slotSnapshots, promoSnapshot] = await Promise.all([
       transaction.get(quotaRef),
       Promise.all(blockedRefs.map((ref) => transaction.get(ref))),
-      Promise.all(slotRefs.map((slot) => transaction.get(slot.ref)))
+      Promise.all(slotRefs.map((slot) => transaction.get(slot.ref))),
+      promoRef ? transaction.get(promoRef) : Promise.resolve(null)
     ]);
+    let promoType = null;
+    if (promoSnapshot) {
+      if (!promoSnapshot.exists()) throw new Error("That promo code was not found.");
+      const promo = promoSnapshot.data();
+      if (promo.type === "single" && promo.redeemed !== true) promoType = "single";
+      else if (promo.type === "monthly" && promo.expiresAt?.toDate().getTime() > Date.now()) promoType = "monthly";
+      else throw new Error("That promo code has already been used or expired.");
+    }
     const previousCount = quotaSnapshot.exists() ? quotaSnapshot.data().count : 0;
-    if (!Number.isInteger(previousCount) || previousCount < 0 || previousCount >= 2) {
+    if (promoType !== "monthly" && (!Number.isInteger(previousCount) || previousCount < 0 || previousCount >= 2)) {
       throw new Error("This anonymous account has reached its limit of 2 bookings for this date. A new browser session may have a separate limit.");
     }
     for (let index = 0; index < blockedSnapshots.length; index += 1) {
@@ -479,8 +577,9 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
       }
       cables.push(openCable);
     }
-    transaction.set(bookingRef, {
+    const booking = {
       id: bookingId,
+      date: activeDate,
       uid,
       name,
       className,
@@ -489,22 +588,82 @@ async function createFirebaseBooking({ name, className, start, end, owner }) {
       owner,
       status: "active",
       cables,
-      limitSlot: String(previousCount + 1),
       createdAt: firestore.serverTimestamp()
-    });
-    transaction.set(quotaRef, {
-      bookingId: quotaSnapshot.exists() ? quotaSnapshot.data().bookingId : bookingId,
-      lastBookingId: bookingId,
-      uid,
-      count: previousCount + 1,
-      updatedAt: firestore.serverTimestamp()
-    });
+    };
+    if (promoType) {
+      booking.promoCode = promoCode;
+      booking.freeLessons = promoType === "monthly" ? end - start + 1 : 1;
+    }
+    if (promoType !== "monthly") {
+      booking.limitSlot = String(previousCount + 1);
+      transaction.set(quotaRef, {
+        bookingId: quotaSnapshot.exists() ? quotaSnapshot.data().bookingId : bookingId,
+        lastBookingId: bookingId,
+        uid,
+        count: previousCount + 1,
+        updatedAt: firestore.serverTimestamp()
+      });
+    }
+    transaction.set(bookingRef, booking);
+    if (promoType === "single") {
+      transaction.update(promoRef, {
+        redeemed: true,
+        redeemedBookingId: bookingId,
+        redeemedDate: activeDate,
+        redeemedAt: firestore.serverTimestamp()
+      });
+    }
     cables.forEach((cable, index) => {
       const lesson = start + index;
       const slotRef = firestore.doc(database, "days", activeDate, "lessons", String(lesson), "cables", cable);
       transaction.set(slotRef, { bookingId, owner });
     });
   });
+}
+
+function isPromoUsable(promo) {
+  if (!promo) return false;
+  if (promo.type === "single") return promo.redeemed !== true;
+  const expiresAt = promo.expiresAt?.toDate ? promo.expiresAt.toDate() : new Date(promo.expiresAt);
+  return promo.type === "monthly" && Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() > Date.now();
+}
+
+async function validatePromoCode(code) {
+  if (!/^[A-Z0-9-]{4,24}$/.test(code)) return null;
+  if (database) {
+    const promoRef = firestore.doc(database, "promos", code);
+    const snapshot = await firestore.getDoc(promoRef);
+    return snapshot.exists() ? { code, ...snapshot.data() } : null;
+  }
+  return readLocalPromos().find((promo) => promo.code === code) || null;
+}
+
+function createPromoExpiry() {
+  const expiresAt = new Date();
+  const dayOfMonth = expiresAt.getDate();
+  expiresAt.setDate(1);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const lastDayOfMonth = new Date(expiresAt.getFullYear(), expiresAt.getMonth() + 1, 0).getDate();
+  expiresAt.setDate(Math.min(dayOfMonth, lastDayOfMonth));
+  return expiresAt;
+}
+
+async function createFirebasePromo(code, type) {
+  const promoRef = firestore.doc(database, "promos", code);
+  await firestore.runTransaction(database, async (transaction) => {
+    const existing = await transaction.get(promoRef);
+    if (existing.exists()) throw new Error("That promo code already exists. Choose another code.");
+    const promo = { code, type, createdAt: firestore.serverTimestamp() };
+    if (type === "single") promo.redeemed = false;
+    else promo.expiresAt = firestore.Timestamp.fromDate(createPromoExpiry());
+    transaction.set(promoRef, promo);
+  });
+}
+
+function generatePromoCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 async function toggleFirebaseBlock(lesson) {
@@ -567,6 +726,45 @@ startSelect.addEventListener("change", () => {
 });
 endSelect.addEventListener("change", updatePrice);
 pickupOwnerSelect.addEventListener("change", updatePickupOwners);
+el("promoCode").addEventListener("input", () => {
+  activePromo = null;
+  showPromoMessage("");
+  updatePrice();
+});
+el("applyPromo").addEventListener("click", async () => {
+  const code = el("promoCode").value.trim().toUpperCase();
+  el("promoCode").value = code;
+  activePromo = null;
+  updatePrice();
+  if (!code) {
+    showPromoMessage("Enter a promo code first.", "error");
+    return;
+  }
+  try {
+    const promo = await validatePromoCode(code);
+    if (!isPromoUsable(promo)) {
+      showPromoMessage("This promo code is invalid, already used, or expired.", "error");
+      return;
+    }
+    if (promo.type === "single" && Number(endSelect.value) !== Number(startSelect.value)) {
+      showPromoMessage("This one-use code is for a one-lesson booking. Choose one lesson, then apply it again.", "error");
+      return;
+    }
+    activePromo = { code, type: promo.type, expiresAt: promo.expiresAt || null };
+    updatePrice();
+    showPromoMessage(promo.type === "single"
+      ? "Applied: one lesson is free. This code can only be used once."
+      : "Applied: unlimited bookings are free until the code expires.", "success");
+  } catch (error) {
+    console.error("Promo code could not be checked:", error);
+    showPromoMessage("Could not check the code. Check your connection and try again.", "error");
+  }
+});
+
+el("generatePromoCode").addEventListener("click", () => {
+  el("newPromoCode").value = generatePromoCode();
+});
+el("newPromoCode").value = generatePromoCode();
 
 for (let lesson = 1; lesson <= LESSONS; lesson += 1) {
   for (const select of [startSelect, endSelect]) {
@@ -580,11 +778,18 @@ for (let lesson = 1; lesson <= LESSONS; lesson += 1) {
 bookingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (busy || !bookingForm.reportValidity()) return;
+  if (el("promoCode").value.trim() && !activePromo) {
+    showPromoMessage("Apply the entered code before booking, or clear the field to continue without it.", "error");
+    el("promoCode").focus();
+    return;
+  }
   const name = el("studentName").value.trim();
   const className = el("studentClass").value.trim();
   const start = Number(startSelect.value);
   const end = Number(endSelect.value);
   const owner = pickupOwnerSelect.value;
+  const promo = activePromo;
+  const promoCode = promo?.code || "";
   if (!name || !className || start < 1 || end < start || end > LESSONS) {
     showBookingMessage("Please enter your name and class, and choose a valid lesson range.", "error");
     return;
@@ -596,8 +801,10 @@ bookingForm.addEventListener("submit", async (event) => {
   setBusy(true);
   try {
     if (database) {
-      await createFirebaseBooking({ name, className, start, end, owner });
+      await createFirebaseBooking({ name, className, start, end, owner, promoCode });
     } else {
+      const promo = promoCode ? await validatePromoCode(promoCode) : null;
+      if (promoCode && !isPromoUsable(promo)) throw new Error("That promo code has already been used or expired. Apply a valid code and try again.");
       await localUpdateDay(activeDate, (latest) => {
         for (let lesson = start; lesson <= end; lesson += 1) {
           if (latest.blockedLessons.includes(lesson)) throw new Error(`Lesson ${lesson} is locked and cannot be booked.`);
@@ -615,6 +822,7 @@ bookingForm.addEventListener("submit", async (event) => {
             throw new Error(`${owner} is fully booked for at least one selected lesson. Please choose ${owner === "Vincent" ? "Max" : "Vincent"} or adjust the lesson range.`);
           }
         }
+        const freeLessons = !promo ? 0 : promo.type === "monthly" ? end - start + 1 : 1;
         const booking = {
           id: crypto.randomUUID(),
           name,
@@ -623,16 +831,28 @@ bookingForm.addEventListener("submit", async (event) => {
           end,
           owner,
           status: "active",
+          ...(promo ? { promoCode, freeLessons } : {}),
           createdAt: new Date().toISOString()
         };
+        if (promo?.type === "single") {
+          const promos = readLocalPromos();
+          const promoIndex = promos.findIndex((item) => item.code === promoCode);
+          if (promoIndex < 0 || promos[promoIndex].redeemed) throw new Error("That promo code has already been used. Apply a valid code and try again.");
+          promos[promoIndex] = { ...promos[promoIndex], redeemed: true };
+          writeLocalPromos(promos);
+        }
         return { ...latest, bookings: [...latest.bookings, booking] };
       });
     }
+    const freeLessons = !promo ? 0 : promo.type === "monthly" ? end - start + 1 : 1;
+    const amountDue = Math.max(0, end - start + 1 - freeLessons);
     bookingForm.reset();
+    activePromo = null;
     startSelect.value = "1";
     endSelect.value = "1";
     updatePrice();
-    showBookingMessage(`Your cable is reserved! Pick it up from ${owner}. Pay CHF ${end - start + 1} in cash.`, "success");
+    showPromoMessage("");
+    showBookingMessage(`Your cable is reserved! Pick it up from ${owner}. ${amountDue ? `Pay CHF ${amountDue} in cash.` : "Your booking is free."}`, "success");
   } catch (error) {
     console.error("Booking could not be saved:", error);
     showBookingMessage(error.message || "Your booking could not be saved. Please try again.", "error");
@@ -673,7 +893,12 @@ el("adminLoginForm").addEventListener("submit", async (event) => {
     el("adminLoginForm").classList.add("hidden");
     el("adminPanel").classList.remove("hidden");
     el("adminPassword").value = "";
-    if (database) subscribeToBookings(activeDate);
+    if (database) {
+      subscribeToBookings(activeDate);
+      subscribeToPromos();
+    } else {
+      promoCodes = readLocalPromos();
+    }
     renderAdmin();
   } catch (loginError) {
     console.error("Admin sign-in failed:", loginError);
@@ -684,8 +909,11 @@ el("adminLoginForm").addEventListener("submit", async (event) => {
 el("adminLogout").addEventListener("click", async () => {
   adminLoggedIn = false;
   if (unsubscribeBookings) unsubscribeBookings();
+  if (unsubscribePromos) unsubscribePromos();
   unsubscribeBookings = null;
+  unsubscribePromos = null;
   dayState.bookings = [];
+  promoCodes = [];
   el("adminPanel").classList.add("hidden");
   el("adminLoginForm").classList.remove("hidden");
   adminDialog.close();
@@ -696,6 +924,58 @@ el("adminLogout").addEventListener("click", async () => {
       console.error("Could not restore the student session:", error);
       setStatus("Signed out. Refresh to reconnect to live availability.", "error");
     }
+  }
+});
+
+el("promoCreateForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (busy || !form.reportValidity()) return;
+  const code = el("newPromoCode").value.trim().toUpperCase();
+  const type = el("newPromoType").value;
+  setBusy(true);
+  el("promoAdminMessage").textContent = "";
+  try {
+    if (database) {
+      await createFirebasePromo(code, type);
+    } else {
+      const promos = readLocalPromos();
+      if (promos.some((promo) => promo.code === code)) throw new Error("That promo code already exists. Choose another code.");
+      const promo = { code, type, createdAt: new Date().toISOString() };
+      if (type === "single") promo.redeemed = false;
+      else promo.expiresAt = createPromoExpiry().toISOString();
+      writeLocalPromos([...promos, promo]);
+    }
+    el("promoAdminMessage").textContent = `${code} created: ${type === "single" ? "one free lesson, usable once." : "unlimited free bookings for one month."}`;
+    el("newPromoCode").value = generatePromoCode();
+  } catch (error) {
+    console.error("Promo code could not be created:", error);
+    el("promoAdminMessage").textContent = error.message || "Could not create that promo code.";
+  } finally {
+    setBusy(false);
+    renderAdmin();
+  }
+});
+
+el("adminPromos").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-promo-code]");
+  if (!button || busy) return;
+  const { promoCode } = button.dataset;
+  if (!globalThis.confirm(`Delete promo code ${promoCode}? It will no longer be accepted.`)) return;
+  setBusy(true);
+  try {
+    if (database) {
+      await firestore.deleteDoc(firestore.doc(database, "promos", promoCode));
+    } else {
+      writeLocalPromos(readLocalPromos().filter((promo) => promo.code !== promoCode));
+    }
+    el("promoAdminMessage").textContent = `${promoCode} deleted.`;
+  } catch (error) {
+    console.error("Promo code could not be deleted:", error);
+    el("promoAdminMessage").textContent = error.message || "Could not delete that promo code.";
+  } finally {
+    setBusy(false);
+    renderAdmin();
   }
 });
 
